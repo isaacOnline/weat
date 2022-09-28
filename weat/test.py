@@ -142,11 +142,14 @@ class Test:
         """
         return self.s_XAB(X) - self.s_XAB(Y)
 
-    def p(self, n_samples=10000, parametric=False):
+    def p(self, n_samples=10000, parametric=False, force_redraw=False):
         """ 
         Compute the p-val for the permutation test, which is defined as
         the probability that a random even partition X_i, Y_i of X u Y
         satisfies P[s(X_i, Y_i, A, B) > s(X, Y, A, B)]
+
+        Force redraw enables you to make an inexact test with a large sample size, even if an exact test is possible
+        with a smaller sample size
         """
         assert self.X.shape[0] == self.Y.shape[0]
         size = self.X.shape[0]
@@ -189,7 +192,7 @@ class Test:
             total = 0
 
             num_partitions = int(scipy.special.binom(2 * self.X.shape[0], self.X.shape[0]))
-            if num_partitions > n_samples:
+            if force_redraw or num_partitions > n_samples:
                 # We only have as much precision as the number of samples drawn;
                 # bias the p-value (hallucinate a positive observation) to
                 # reflect that.
