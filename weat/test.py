@@ -262,7 +262,6 @@ class SCWEAT:
     def reset_calc(self):
         log.info("Computing cosine similarities...")
         self.similarity_matrix = self.similarities()
-        self.s_AB = None
 
     def similarities(self):
         """
@@ -285,16 +284,13 @@ class SCWEAT:
 
     def p(self, n_samples=10000):
         """
-        Compute the p-val for the permutation test, which is defined as
-        the probability that a random even partition X_i, Y_i of X u Y
-        satisfies P[s(X_i, Y_i, A, B) > s(X, Y, A, B)]
+        Compute the p-val for the permutation test, which I am defining as a test where you compare the true association
+        score to the association scores that occur from randomly reshuffling the attribute sets
 
-        Force redraw enables you to make an inexact test with a large sample size, even if an exact test is possible
-        with a smaller sample size
         """
 
         log.info('Using non-parametric test')
-        e = self.effect_size()
+        e = self.association_score()
         total_true = 0
         total_equal = 0
         total = 0
@@ -311,7 +307,7 @@ class SCWEAT:
             A_idx = all_idx[:len(self.A)]
             B_idx = all_idx[len(self.A):]
             assert len(A_idx) == len(B_idx)
-            random_effect_size = self.effect_size(A_idx, B_idx)
+            random_effect_size = self.association_score(A_idx, B_idx)
             if random_effect_size > e:
                 total_true += 1
             elif random_effect_size == e:  # use conservative test
@@ -324,13 +320,13 @@ class SCWEAT:
 
         return total_true / total
 
-    def effect_size(self, A_idx = None, B_idx = None):
+    def association_score(self, A_idx = None, B_idx = None):
         """
-        Compute the effect size, which is defined as
-            [mean_{x in X} s(x, A, B) - mean_{y in Y} s(y, A, B)] /
-                [ stddev_{w in X u Y} s(w, A, B) ]
+        Compute the association score, which is defined as
+            [s(w, A, B)] /
+                [ stddev_{x in A U B} cos(w, x) ]
         args:
-            - X, Y, A, B : sets of target (X, Y) and attribute (A, B) indices
+            - A, B : sets of attribute (A, B) indices
         """
         if A_idx is None and B_idx is None:
             A_idx = np.arange(len(self.A))
