@@ -17,7 +17,7 @@ import argparse
 # A and B are two sets of attribute words.
 
 
-class Test:
+class WEAT:
     def __init__(self, X, Y, A, B, names=None):
         """
         A WEAT Test.
@@ -242,6 +242,104 @@ class Test:
         return numerator / denominator
 
 
+class SCWEAT:
+    def __init__(self, w, A, B, names=None):
+        """
+        A WEAT Test.
+
+        :param w: Embeddings for word of interest
+        :param A: A set of attribute embeddings
+        :param B: A set of attribute embeddings
+        :param names: Optional set of names for X, Y, A, and B, in order
+        :return: the effect size and p-value
+        """
+        self.w = w
+        self.A = A
+        self.B = B
+        self.names = names if names is not None else ["w", "A", "B"]
+        self.reset_calc()
+
+    def reset_calc(self):
+        log.info("Computing cosine similarities...")
+        self.similarity_matrix = self.similarities()
+        self.s_AB = None
+
+    def similarities(self):
+        """
+        :return: an array of size (len(XY), len(AB)) containing cosine similarities
+        between items in XY and items in AB.
+        """
+        AB = np.concatenate((self.A, self.B))
+        return cosine_similarity(self.w, AB)
+
+    def s_wAB(self, A, B):
+        """
+        Return vector of s(w, A, B) across w, where
+            s(w, A, B) = mean_{a in A} cos(w, a) - mean_{b in B} cos(w, b).
+
+        :param A: Mask on the AB axis of similarity matrix to use for A
+        :param B: Mask on the AB axis of similarity matrix to use for B
+        """
+        return self.similarity_matrix[:, A].mean(axis=1) - self.similarity_matrix[:, B].mean(axis=1)
+
+
+    def p(self, n_samples=10000):
+        """
+        Compute the p-val for the permutation test, which is defined as
+        the probability that a random even partition X_i, Y_i of X u Y
+        satisfies P[s(X_i, Y_i, A, B) > s(X, Y, A, B)]
+
+        Force redraw enables you to make an inexact test with a large sample size, even if an exact test is possible
+        with a smaller sample size
+        """
+
+        log.info('Using non-parametric test')
+        e = self.effect_size()
+        total_true = 0
+        total_equal = 0
+        total = 0
+
+        # We only have as much precision as the number of samples drawn;
+        # bias the p-value (hallucinate a positive observation) to
+        # reflect that.
+        total_true += 1
+        total += 1
+        log.info('Drawing {} samples (and biasing by 1)'.format(n_samples - total))
+        for i in range(n_samples - 1):
+            all_idx = np.arange(len(self.A) + len(self.B))
+            np.random.shuffle(all_idx)
+            A_idx = all_idx[:len(self.A)]
+            B_idx = all_idx[len(self.A):]
+            assert len(A_idx) == len(B_idx)
+            random_effect_size = self.effect_size(A_idx, B_idx)
+            if random_effect_size > e:
+                total_true += 1
+            elif random_effect_size == e:  # use conservative test
+                total_true += 1
+                total_equal += 1
+            total += 1
+
+        if total_equal:
+            log.warning('Equalities contributed {}/{} to p-value'.format(total_equal, total))
+
+        return total_true / total
+
+    def effect_size(self, A_idx = None, B_idx = None):
+        """
+        Compute the effect size, which is defined as
+            [mean_{x in X} s(x, A, B) - mean_{y in Y} s(y, A, B)] /
+                [ stddev_{w in X u Y} s(w, A, B) ]
+        args:
+            - X, Y, A, B : sets of target (X, Y) and attribute (A, B) indices
+        """
+        if A_idx is None and B_idx is None:
+            A_idx = np.arange(len(self.A))
+            B_idx = np.arange(len(self.A), len(self.A) + len(self.B))
+        numerator = self.s_wAB(A_idx, B_idx)
+        denominator = np.std(self.similarity_matrix[:, :], ddof=1)
+        return numerator / denominator
+
+
 if __name__ == "__main__":
 
     np.random.seed(38)
@@ -251,5 +349,5 @@ if __name__ == "__main__":
     A = X
     B = Y
 
-    test = Test(X, Y, A, B)
+    test = WEAT(X, Y, A, B)
     pval = test.run(n_samples=10000)
